@@ -1,27 +1,126 @@
-# IPREF gateway
-IPREF provides means of communication across different address spaces, such as private networks behind NAT, or across different protocols. It provides compatibility between IPv4 and IPv6. It can traverse NAT, NAT6, and cross protocol IPv4/IPv6. It is inherently peer-to-peer.
+# IPREF Gateway
 
-An IPREF gateway must be installed within each address space that wants to communicate. Here is an example of how such a gateway may be installed at a home network.
+IPREF (**IP** addressing with **References**) is a draft networking protocol ([draft-augustyn-intarea-ipref](https://www.ietf.org/archive/id/draft-augustyn-intarea-ipref-06.html)) that eliminates the need for traditional NAT port forwarding. It provides secure, direct connectivity between hosts using reference-based addressing which provides compatability between IPv4 and IPv6 networks.
 
-## Building
+IPREF provides means of communication across different address spaces, such as private networks behind NAT, overlapping networks, or even across different protocols. It can traverse NAT, NAT6, and cross protocol IPv4/IPv6. It is inherently peer-to-peer.
 
-For a complete IPREF gateway, you'll need three binaries: `gw`, `dns-agent`, and `coredns`. Below are instructions for manually building them. Alternatively, you can use the Makefile in this repository to perform the process automatically. Before using it, you'll need to clone these repositories alongside the `gw` repository:
+## Key Advantages
 
-- https://github.com/ipref/dns-agent
-- https://github.com/coredns/coredns (it's recommended to checkout tag `v1.12.1`)
-- https://github.com/ipref/coredns-plugin-ipref
+- **No port forwarding required** - Services are accessible via IPREF addresses automatically
+- **Simplified configuration** - No complex NAT rules or firewall exceptions
 
-So the same directory should contain `gw`, `dns-agent`, `coredns`, and `coredns-plugin-ipref`.
+## Quick Start
 
-Then just run `make` inside this repository, and you'll find the binaries in `bin/`.
-
-## Build the gateway
 ### Prerequisites
+
+- Linux 64-bit (tested on Rocky Linux, RHEL, Debian, Ubuntu)
+- 1 vCPU, 2GB RAM minimum
+- UDP port 1045 accessible
+- Basic networking tools (`dig`, `ping`, `traceroute`)
+
+### Demo Hosts
+
+Test your IPREF installation with these demo hosts:
+
+| Host | Location |
+|------|----------|
+| k41.nexsand.us | United States |
+| m41.nexsand.ca | Canada |
+| o61.nexsand.uk | United Kingdom |
+
+These websites can be viewed with a successful installation of the gateway:
+- https://k41.nexsand.us
+- https://m41.nexsand.ca
+- https://o61.nexsand.uk
+
+### Client Mode Setup
+
+Client mode allows you to access IPREF network resources without publishing services.
+
+```bash
+# Create directories
+sudo mkdir -p /var/lib/ipref /run/ipref /etc/coredns
+
+# Start gateway in client mode
+sudo ipref-gw \
+    -data /var/lib/ipref \
+    -gateway-bind 0.0.0.0 \
+    -gateway-pub 0.0.0.0 \
+    -encode-net 10.240.0.0/12 \
+    -mapper-socket /run/ipref/mapper.sock
+
+# Start dns-agent (in another terminal)
+sudo ipref-dns-agent \
+    -ea-ipver 4 \
+    -gw-ipver 4 \
+    -m unix:///run/ipref/mapper.sock \
+    -t 60
+
+# Start CoreDNS (in another terminal)
+sudo ipref-coredns -conf /etc/coredns/Corefile
+```
+
+### Test Connectivity
+
+@TODO: need to set resolv file prob?
+
+```bash
+# Test DNS resolution
+dig k41.nexsand.us
+
+# Test connectivity (should resolve to 10.24x.x.x address)
+ping k41.nexsand.us
+
+# Access demo web services
+curl http://k41.nexsand.us
+```
+
+## Building from Source
+
+For a complete IPREF gateway, you'll need three binaries: `gw`, `dns-agent`, and `coredns`.
+
+### Integrated Build (Recommended)
+
+The easiest way to build all components is using the provided Makefile. First, clone the required repositories alongside the `gw` repository:
+
+```bash
+# Clone all required repositories in the same directory
+git clone https://github.com/ipref/gw
+git clone https://github.com/ipref/dns-agent
+git clone https://github.com/coredns/coredns
+git clone https://github.com/ipref/coredns-plugin-ipref
+
+# Checkout specific CoreDNS version
+cd coredns
+git checkout v1.12.1
+cd ..
+
+# Build all components
+cd gw
+make
+
+# Find binaries in bin/ directory
+ls bin/
+```
+
+This will automatically:
+- Build the gateway binary
+- Build the DNS agent
+- Configure and build CoreDNS with the IPREF plugin
+- Place all binaries in `bin/` directory
+
+<details>
+<summary><strong>Individual Component Builds</strong> (click to expand)</summary>
+
+You can also build each component separately if needed:
+
+#### Build the gateway
+##### Prerequisites
 
 - Go 1.22 or later
 - Git
 
-### Steps
+##### Steps
 
 1. Clone the repository:
 ```bash
@@ -41,17 +140,7 @@ go build -o gw
 
 The build will generate an executable named `gw` in your current directory.
 
-### Dependencies
-
-The project uses the following main dependencies (as specified in go.mod):
-
-- github.com/fsnotify/fsnotify v1.8.0
-- github.com/hashicorp/golang-lru/v2 v2.0.7
-- github.com/ipref/common v1.3.1
-- go.etcd.io/bbolt v1.3.11
-- golang.org/x/sys v0.28.0
-
-### Verify installation
+##### Verify installation
 
 To verify the build was successful:
 
@@ -59,7 +148,7 @@ To verify the build was successful:
 ./gw -h
 ```
 
-## Build the DNS agent
+#### Build the DNS agent
 
 The DNS agent informs the gateway about the mappings between public IPREF addresses and private IP addresses by periodically querying DNS servers.
 
@@ -77,7 +166,7 @@ The binary will be named `dns-agent`. Verify that it was built successfully:
 ./dns-agent -h
 ```
 
-## Build CoreDNS with the `ipref` plugin
+#### Build CoreDNS with the `ipref` plugin
 
 CoreDNS can be used to host the special resolver (using the `ipref` plugin) and also optionally your `*.internal` and/or your public nameservers.
 
@@ -110,6 +199,11 @@ Once these steps are complete, you can run `make` to build CoreDNS. Verify that 
 ```
 
 Make sure `ipref` is in the list of plugins. If not, then the build system might not have recognized the plugin. Also make sure that the `require` line mentioned above is still in `go.mod` - Go's build system might have removed it if it couldn't find the plugin. Make sure the plugin repo is in the correct place and has the correct name before running `make`.
+
+</details>
+
+<details>
+<summary><strong>Detailed Configuration Examples</strong> (click to expand)</summary>
 
 ## Configuration
 
@@ -220,60 +314,51 @@ host11.example.com.  IN  TXT  "AA gw.example.com + 11"
 host22.example.com.  IN  TXT  "AA gw.example.com + 22"
 ```
 
-## Install and configure the gateway at a home network.
-Blah, blah
+</details>
 
-## Test the gateway's ability to connect to hosts in other address spaces.
-Blah, blah...
+## Advanced Setup
 
-Nexsand, Inc, has set up a demo network in the cloud. It publishes test websites in three locations:
+For detailed setup instructions including:
+- Publishing your own services
+- Production deployment with systemd
+- DNS configuration for various providers
+- Troubleshooting guide
 
-	https://k41.nexsand.us
-	https://m41.nexsand.ca
-	https://o61.nexsand.uk
+See the comprehensive documentation in this repository's [docs/](docs/) directory.
 
-These websites can be viewed with a successful installation of the gateway. It is a quick test to check if it operates correctly.
+## Publishing Services
 
-Blah, blah...
+IPREF allows you to publish arbitrary number of services without NAT port forwarding, port manipulation, or global IP addresses. You can publish thousands of services from within a private address space.
 
-## Publish local services to the Internet
+### Key Steps
 
-There is no need to mess with NAT, no need to manipulate ports, no need to assign global IP addresses. IPREF allows to publish arbitrary number of services, thousands of them, from within a private address space (behind NAT)
+1. **Set up internal DNS server** - Publish local addresses using `.internal` TLD
+2. **Set up external DNS server** - Publish IPREF addresses in publicly accessible DNS
+3. **Configure gateway** - Gateway matches domain segments to map IPREF to local addresses
 
-### Setup some local service
+### Example Configuration
 
-Blah, blah...
+For detailed examples of publishing services, see the Configuration section above and the [docs/](docs/) directory.
 
-It could be a machine with an ssh access, or a web server.
+## IPv6 Support
 
-Blah, blah...
+IPREF supports IPv6 connectivity. If your ISP provides IPv6 addresses and your router supports IPv6, you can connect to both IPv4 and IPv6 networks and reach external hosts over either protocol.
 
-### Set up internal DNS server
+The gateway can traverse NAT, NAT6, and cross-protocol IPv4/IPv6 connections without changes to your local network.
 
-First publish the server in an internal DNS server. This server publishes local addresses of services hosted on the local network (local address space). These DNS names are only visible internally. Typically TLD '.internal' is used for the purpose
+## Documentation
 
-Blah, blah...
+- [Setup Guide](docs/SETUP.md) - Detailed setup instructions
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [Examples](examples/) - Configuration examples
+- [Systemd Services](systemd/) - Production deployment
 
-### Set up external DNS server
+## Related Repositories
 
-Publish IPREF addresses of the local services in a publicly accessible DNS server.
+- [dns-agent](https://github.com/ipref/dns-agent) - DNS synchronization agent
+- [coredns-plugin-ipref](https://github.com/ipref/coredns-plugin-ipref) - CoreDNS IPREF plugin
+- [common](https://github.com/ipref/common) - Shared IPREF libraries
 
-Blah, blah...
+## License
 
-### Configure the gateway to publish local services to the Internet
-
-Publishing a service via IPREF amounts to setting proper DNS entries in the internal and external DNS servers. The gateway makes a match between top domain segments. That way it knows which IPREF address corresponds to which local native address.
-
-Blah, blah, ...
-
-### Testing the services
-
-Blah, blah...
-
-## Dealing with IPv6 Internet
-
-If your Internet Service provider offers IPv6 addresses, and you router supports IPv6, you can connect to both IPv4 and IPv6 Internets and reach external hosts over either IPv4 or IPv6 Internet.
-
-Connect the IPv6 Internet to the IPREF gateway. There is no need to change anything in your local network.
-
-Blah, blah...
+[GPL-2.0](https://choosealicense.com/licenses/gpl-2.0/)
