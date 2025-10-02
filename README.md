@@ -1,8 +1,12 @@
 # IPREF Gateway
 
-IPREF (**IP** addressing with **References**) is a draft networking protocol ([draft-augustyn-intarea-ipref](https://www.ietf.org/archive/id/draft-augustyn-intarea-ipref-06.html)) that eliminates the need for traditional NAT port forwarding. It provides secure, direct connectivity between hosts using reference-based addressing which provides compatability between IPv4 and IPv6 networks.
+IPREF (**IP** addressing with **References**) is a networking protocol ([draft-augustyn-intarea-ipref](https://www.ietf.org/archive/id/draft-augustyn-intarea-ipref-06.html)) that eliminates the need for traditional NAT port forwarding. It provides secure, direct connectivity between hosts using reference-based addressing which provides compatability between IPv4 and IPv6 networks.
 
 IPREF provides means of communication across different address spaces, such as private networks behind NAT, overlapping networks, or even across different protocols. It can traverse NAT, NAT6, and cross protocol IPv4/IPv6. It is inherently peer-to-peer.
+
+This gateway is a reference implementation of the IPREF protocol that integrates an IPREF forwarder with an address mapper. The forwarder handles bidirectional packet translation between local IP addresses and IPREF addresses, transmitting encapsulated packets through UDP tunnels to peer gateways. The address mapper manages the allocation of references and encoded addresses, maintaining mappings between local addresses and their IPREF equivalents.
+
+For complete functionality, the gateway requires two supporting components: the `dns-agent` (which synchronizes DNS records to inform the mapper of locally-hosted services) and CoreDNS with the IPREF plugin (which provides IPREF-aware DNS resolution for local clients). Only the gateway itself needs to understand IPREF—hosts on the local network operate normally without modification.
 
 ## Key Advantages
 
@@ -60,9 +64,21 @@ sudo ipref-dns-agent \
 sudo ipref-coredns -conf /etc/coredns/Corefile
 ```
 
-### Test Connectivity
+### Configure DNS Resolution
 
-@TODO: need to set resolv file prob?
+Point your system's DNS resolver to the local CoreDNS instance:
+
+```bash
+# Temporarily set DNS resolver (will reset on reboot)
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf
+
+# For systemd-resolved systems, alternatively:
+sudo mkdir -p /etc/systemd/resolved.conf.d
+echo -e "[Resolve]\nDNS=127.0.0.1\nDomains=~." | sudo tee /etc/systemd/resolved.conf.d/ipref.conf
+sudo systemctl restart systemd-resolved
+```
+
+### Test Connectivity
 
 ```bash
 # Test DNS resolution
@@ -207,7 +223,7 @@ Make sure `ipref` is in the list of plugins. If not, then the build system might
 
 ## Configuration
 
-For the sake of demonstration, we'll assume that you've decided to use:
+For this example, we'll assume that you've decided to use:
 
 - `*.internal` as your internal, private TLD for hosting local IP addresses
 - `*.example.com` as your public domain for hosting IPREF addresses
@@ -309,9 +325,9 @@ example.com.  IN  NS   ns2
 
 gw.example.com.      IN  A    1.2.3.4
 
-gw.example.com.      IN  TXT  "AA gw.example.com + 1" ; By convention, ref 1 is reserved for the gw itself
-host11.example.com.  IN  TXT  "AA gw.example.com + 11"
-host22.example.com.  IN  TXT  "AA gw.example.com + 22"
+gw.example.com.      IN  TXT  "AA gw.example.com + 1"    ; By convention, ref 1 is reserved for the gw itself
+host11.example.com.  IN  TXT  "AA gw.example.com + 1025" ; Non-gw hosts should begin at 1024+1
+host22.example.com.  IN  TXT  "AA gw.example.com + 1-22" ; A hyphen separates groups of 16 bits
 ```
 
 </details>
