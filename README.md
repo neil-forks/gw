@@ -22,6 +22,20 @@ For complete functionality, the gateway requires two supporting components: the 
 - UDP port 1045 accessible
 - Basic networking tools (`dig`, `ping`, `traceroute`)
 
+### Download Binaries
+
+Download pre-built binaries from GitHub releases:
+
+```bash
+# Download pre-built binaries (Linux amd64)
+wget https://github.com/ipref/gw/releases/latest/download/ipref-gw
+wget https://github.com/ipref/gw/releases/latest/download/ipref-dns-agent
+wget https://github.com/ipref/gw/releases/latest/download/ipref-coredns
+
+chmod +x ipref-*
+sudo mv ipref-* /usr/local/bin/
+```
+
 ### Demo Hosts
 
 Test your IPREF installation with these demo hosts:
